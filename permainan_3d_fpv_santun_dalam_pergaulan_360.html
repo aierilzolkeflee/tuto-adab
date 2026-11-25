@@ -1,0 +1,1702 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Permainan 3D FPV: Santun dalam Pergaulan</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js CDN r128 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Google Fonts: Nunito & Fredoka -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
+    
+    <style>
+        /* Pengoptimuman Khas untuk Telefon, Tablet & Iframe (Jotform) */
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            min-height: 560px;
+            position: fixed;
+            inset: 0;
+            overflow: hidden;
+            font-family: 'Nunito', sans-serif;
+            background-color: #0c4a6e;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .font-display {
+            font-family: 'Fredoka', cursive, sans-serif;
+        }
+
+        /* Kanvas 3D & Zon Sentuh Kamera/Joystick menghalang skrol luar */
+        #game-canvas, #joystick-zone, #look-zone {
+            touch-action: none;
+        }
+
+        /* Gaya Panel & Butang Mesra Sentuh (>= 44x44px) */
+        .game-panel {
+            background: rgba(255, 255, 255, 0.96);
+            border: 4px solid #0f172a;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35), inset 0 3px 0 #ffffff;
+            color: #0f172a;
+        }
+        .hud-glass {
+            background: rgba(15, 23, 42, 0.86);
+            backdrop-filter: blur(6px);
+            border: 2.5px solid rgba(255, 255, 255, 0.25);
+            color: #f8fafc;
+        }
+        .game-btn {
+            border: 3px solid #0f172a;
+            box-shadow: 0 4px 0 #0f172a;
+            transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.1s ease;
+            cursor: pointer;
+            touch-action: manipulation;
+            min-height: 44px;
+            min-width: 44px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .game-btn:hover {
+            filter: brightness(1.06);
+        }
+        .game-btn:active, .game-btn.active-press {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #0f172a;
+        }
+
+        /* Skrol Lancar dalam Modal di dalam Telefon & Iframe */
+        .scrollable-area {
+            overflow-y: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            touch-action: pan-y !important;
+        }
+        .scrollable-area button, .scrollable-area input {
+            touch-action: manipulation !important;
+        }
+
+        /* Crosshair FPV Tengah */
+        #crosshair {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            width: 22px;
+            height: 22px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 12;
+        }
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.92);
+            box-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
+            border-radius: 2px;
+        }
+        #crosshair::before { top: 9.5px; left: 0; width: 22px; height: 3px; }
+        #crosshair::after { top: 0; left: 9.5px; width: 3px; height: 22px; }
+
+        /* Virtual Joystick untuk Touchscreen */
+        #joystick-zone {
+            width: 124px;
+            height: 124px;
+            background: rgba(15, 23, 42, 0.52);
+            border: 3px solid rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.4);
+        }
+        #joystick-knob {
+            width: 52px;
+            height: 52px;
+            background: radial-gradient(circle at 35% 35%, #ffffff, #cbd5e1);
+            border: 3px solid #0f172a;
+            border-radius: 50%;
+            position: absolute;
+            pointer-events: none;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.45);
+        }
+
+        /* Butang Pusing Kamera Pantas 360 */
+        .turn-btn {
+            width: 50px;
+            height: 50px;
+            background: rgba(15, 23, 42, 0.82);
+            border: 2.5px solid rgba(255, 255, 255, 0.85);
+            border-radius: 14px;
+            color: #ffffff;
+            font-size: 20px;
+            font-weight: 900;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            touch-action: none;
+            box-shadow: 0 4px 0 #0f172a;
+        }
+        .turn-btn:active, .turn-btn.pressed {
+            background: #0284c7;
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #0f172a;
+        }
+
+        /* Mod Simulasi Skrin Penuh apabila iframe menyekat Fullscreen API */
+        body.pseudo-fullscreen {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 9999 !important;
+        }
+
+        @keyframes floatPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        .pulse-cta {
+            animation: floatPulse 1.5s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Kanvas Dunia 3D -->
+    <canvas id="game-canvas" class="fixed inset-0 w-full h-full block z-0"></canvas>
+
+    <!-- Crosshair FPV -->
+    <div id="crosshair" class="hidden"></div>
+
+    <!-- Zon Seret Kamera 360° (Separuh Kanan Skrin untuk Touchscreen) -->
+    <div id="look-zone" class="hidden fixed top-0 right-0 bottom-0 w-1/2 z-10"></div>
+
+    <!-- ========================================================= -->
+    <!-- HUD ATAS: STATUS BINTANG ADAB, KOMPAS 360° & BUTANG TETAPAN-->
+    <!-- ========================================================= -->
+    <div id="game-hud" class="hidden fixed top-0 left-0 right-0 z-20 p-2.5 sm:p-3 flex flex-col gap-2 pointer-events-none">
+        <div class="flex justify-between items-start gap-2">
+            <!-- Kiri: Markah Bintang Adab & Kompas Arah -->
+            <div class="flex flex-col gap-1.5 pointer-events-auto" onpointerdown="event.stopPropagation()">
+                <div class="hud-glass px-3 py-1.5 rounded-2xl flex flex-wrap items-center gap-2 shadow-lg">
+                    <span class="bg-emerald-500 text-slate-950 font-black text-[11px] sm:text-xs px-2.5 py-0.5 rounded-full">
+                        DUTA ADAB 360°
+                    </span>
+                    <span class="text-xs sm:text-sm font-black text-amber-300">
+                        ⭐ <span id="hud-score">0 / 5</span> Bintang Adab
+                    </span>
+                </div>
+                <!-- Kompas Pintar Arah Stesen -->
+                <div class="hud-glass px-3 py-1.5 rounded-2xl text-[11px] sm:text-xs font-bold text-sky-200 flex items-center gap-1.5 shadow">
+                    <span>🧭</span>
+                    <span id="hud-compass-text">Pusing 360° atau jalan ke arah stesen terdekat!</span>
+                </div>
+            </div>
+
+            <!-- Kanan: Butang Skrin Penuh & Butang Tetapan (Settings) -->
+            <div class="flex items-center gap-1.5 sm:gap-2 pointer-events-auto" onpointerdown="event.stopPropagation()">
+                <button type="button" id="btn-hud-fullscreen" onclick="toggleFullscreenMode()" class="game-btn bg-indigo-600 text-white px-3 py-2 rounded-2xl font-extrabold text-xs gap-1.5 shadow-lg" title="Skrin Penuh">
+                    <span>⛶</span><span class="hidden sm:inline">Skrin Penuh</span>
+                </button>
+                <button type="button" onclick="openSettingsModal()" class="game-btn bg-amber-400 text-slate-950 px-3 py-2 rounded-2xl font-extrabold text-xs gap-1.5 shadow-lg" title="Tetapan (Settings)">
+                    <span>⚙️</span><span>Tetapan</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Bar Pintasan Teleport Pantas ke 5 Stesen Watak -->
+        <div class="flex flex-wrap items-center gap-1.5 pointer-events-auto" onpointerdown="event.stopPropagation()">
+            <span class="hud-glass text-[11px] font-extrabold px-2.5 py-1.5 rounded-xl">
+                🚶 Pergi Terus:
+            </span>
+            <button type="button" id="tp-btn-0" onclick="teleportToStation(0)" class="game-btn bg-amber-100 text-slate-900 px-2.5 py-1 rounded-xl text-[11px] font-extrabold">
+                1. Pak Cik Ahmad
+            </button>
+            <button type="button" id="tp-btn-1" onclick="teleportToStation(1)" class="game-btn bg-amber-100 text-slate-900 px-2.5 py-1 rounded-xl text-[11px] font-extrabold">
+                2. Mak Cik Salmah
+            </button>
+            <button type="button" id="tp-btn-2" onclick="teleportToStation(2)" class="game-btn bg-sky-100 text-slate-900 px-2.5 py-1 rounded-xl text-[11px] font-extrabold">
+                3. Adik Aiman
+            </button>
+            <button type="button" id="tp-btn-3" onclick="teleportToStation(3)" class="game-btn bg-sky-100 text-slate-900 px-2.5 py-1 rounded-xl text-[11px] font-extrabold">
+                4. Zara & Danial
+            </button>
+            <button type="button" id="tp-btn-4" onclick="teleportToStation(4)" class="game-btn bg-emerald-100 text-slate-900 px-2.5 py-1 rounded-xl text-[11px] font-extrabold">
+                5. Cikgu Hajar
+            </button>
+        </div>
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- KAWALAN PERGERAKAN 360° BAWAH (TOUCHSCREEN & KEYBOARD)    -->
+    <!-- ========================================================= -->
+    <div id="controls-overlay" class="hidden pointer-events-none">
+        
+        <!-- Butang Interaksi Besar (Muncul apabila menghampiri Watak) -->
+        <div class="fixed bottom-5 left-1/2 -translate-x-1/2 z-30 pointer-events-auto" onpointerdown="event.stopPropagation()">
+            <button type="button" id="btn-interact" onclick="triggerStationInteraction()" class="hidden game-btn bg-emerald-500 text-slate-950 px-5 py-3.5 rounded-2xl font-black text-xs sm:text-sm shadow-2xl pulse-cta gap-2">
+                <span class="text-lg">🤝</span> <span id="btn-interact-label">SANTUNI WATAK INI</span>
+            </button>
+        </div>
+
+        <!-- Kiri Bawah: Virtual Joystick (Untuk Mod Touchscreen) -->
+        <div id="touch-left-controls" class="fixed bottom-4 left-4 sm:left-6 z-20 pointer-events-auto" onpointerdown="event.stopPropagation()">
+            <div id="joystick-zone">
+                <div id="joystick-knob"></div>
+            </div>
+        </div>
+
+        <!-- Kanan Bawah: Butang Pusing Kamera 360° & Melambai/Lompat -->
+        <div id="touch-right-controls" class="fixed bottom-4 right-4 sm:right-6 z-20 flex flex-col items-end gap-2.5 pointer-events-auto" onpointerdown="event.stopPropagation()">
+            <button type="button" id="btn-wave-quick" onclick="performHandAnimation('wave')" class="game-btn bg-sky-500 text-slate-950 px-3.5 py-2 rounded-2xl font-extrabold text-xs gap-1.5 shadow-lg">
+                <span>👋</span> <span>Lambai Mesra</span>
+            </button>
+            <div class="flex items-center gap-2 bg-slate-900/60 p-2 rounded-2xl border-2 border-white/40">
+                <button type="button" id="btn-turn-left" class="turn-btn" aria-label="Pusing Kiri">↺</button>
+                <button type="button" id="btn-turn-right" class="turn-btn" aria-label="Pusing Kanan">↻</button>
+            </div>
+        </div>
+
+        <!-- Petunjuk Mod Keyboard (Muncul apabila memilih Mod Keyboard) -->
+        <div id="keyboard-hint-bar" class="hidden fixed bottom-3 left-1/2 -translate-x-1/2 z-20 hud-glass px-4 py-2 rounded-2xl text-xs font-bold text-center pointer-events-none">
+            ⌨️ <b>WASD / Anak Panah:</b> Jalan • <b>Q / E atau Klik & Seret Skrin:</b> Pusing 360° • <b>Space / Enter:</b> Interaksi
+        </div>
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- SKRIN 1: MENU UTAMA & PENGENALAN TUTORIAL                 -->
+    <!-- ========================================================= -->
+    <div id="main-menu" class="fixed inset-0 z-30 flex items-center justify-center p-3 sm:p-5 bg-gradient-to-b from-sky-800/95 via-emerald-900/95 to-slate-950/95">
+        <div class="game-panel w-full max-w-2xl max-h-[94%] rounded-3xl p-4 sm:p-6 scrollable-area flex flex-col justify-between space-y-4">
+            
+            <div class="text-center border-b-2 border-slate-200 pb-3">
+                <div class="flex flex-wrap justify-center items-center gap-2 mb-2">
+                    <span class="bg-emerald-600 text-white text-[11px] font-extrabold px-3 py-1 rounded-full">
+                        SIMULASI 3D FIRST-PERSON VIEW (360°)
+                    </span>
+                    <button type="button" onclick="toggleFullscreenMode()" class="game-btn bg-indigo-600 text-white px-3 py-1 rounded-full text-[11px] font-extrabold">
+                        ⛶ Skrin Penuh
+                    </button>
+                </div>
+                <h1 class="font-display text-2xl sm:text-3xl md:text-4xl text-slate-900 tracking-tight">
+                    SANTUN DALAM PERGAULAN
+                </h1>
+                <p class="text-xs sm:text-sm font-bold text-slate-600 mt-1">
+                    Jadilah Duta Adab! Tunjukkan demonstrasi tutur kata & tingkah laku sopan bersama orang dewasa dan kanak-kanak.
+                </p>
+            </div>
+
+            <!-- Kad Ringkasan Misi & Watak -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs sm:text-sm">
+                <div class="bg-amber-50 border-2 border-amber-400 rounded-2xl p-3.5">
+                    <p class="font-black text-amber-900 flex items-center gap-1.5 text-sm">
+                        <span>👴👵</span> Watak Orang Dewasa
+                    </p>
+                    <ul class="list-disc pl-5 mt-1.5 space-y-1 font-bold text-slate-700 text-xs">
+                        <li><b>Pak Cik Ahmad:</b> Memberi salam & bersalam cium tangan.</li>
+                        <li><b>Mak Cik Salmah & Tok Wan:</b> Menunduk hormat ketika melintas.</li>
+                        <li><b>Cikgu Hajar:</b> Menghulur dua tangan & berterima kasih.</li>
+                    </ul>
+                </div>
+                <div class="bg-sky-50 border-2 border-sky-400 rounded-2xl p-3.5">
+                    <p class="font-black text-sky-900 flex items-center gap-1.5 text-sm">
+                        <span>🧒👧</span> Watak Kanak-Kanak
+                    </p>
+                    <ul class="list-disc pl-5 mt-1.5 space-y-1 font-bold text-slate-700 text-xs">
+                        <li><b>Adik Aiman:</b> Bercakap lemah lembut & menolong bangun.</li>
+                        <li><b>Zara & Danial:</b> Mendamaikan & berkongsi permainan.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Pilihan Pantas Mod Kawalan Sebelum Mula -->
+            <div class="bg-slate-100 border-2 border-slate-300 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-2">
+                <span class="text-xs font-extrabold text-slate-800">🕹️ Mod Kawalan Pilihan:</span>
+                <div class="flex gap-1.5">
+                    <button type="button" id="menu-ctrl-auto" onclick="setControllerMode('auto')" class="game-btn bg-emerald-400 text-slate-950 px-3 py-1.5 rounded-xl text-xs font-extrabold">
+                        Auto
+                    </button>
+                    <button type="button" id="menu-ctrl-touch" onclick="setControllerMode('touch')" class="game-btn bg-white text-slate-800 px-3 py-1.5 rounded-xl text-xs font-extrabold">
+                        📱 Touchscreen
+                    </button>
+                    <button type="button" id="menu-ctrl-key" onclick="setControllerMode('keyboard')" class="game-btn bg-white text-slate-800 px-3 py-1.5 rounded-xl text-xs font-extrabold">
+                        ⌨️ Keyboard
+                    </button>
+                </div>
+            </div>
+
+            <!-- Butang Mula & Tetapan -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                <button type="button" onclick="openSettingsModal()" class="game-btn bg-amber-300 text-slate-950 py-3 rounded-2xl font-black text-xs sm:text-sm">
+                    ⚙️ Tetapan
+                </button>
+                <button type="button" onclick="startGame()" class="sm:col-span-2 game-btn bg-emerald-500 text-slate-950 py-3 rounded-2xl font-black text-sm sm:text-base shadow-xl">
+                    ▶️ MULA SIMULASI 3D (360°)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- MODAL 2: TUTORIAL & DEMONSTRASI BERADAB INTERAKTIF        -->
+    <!-- ========================================================= -->
+    <div id="tutorial-modal" class="hidden fixed inset-0 z-40 flex items-center justify-center p-2.5 sm:p-4 bg-black/75 backdrop-blur-xs">
+        <div class="game-panel w-full max-w-xl max-h-[92%] rounded-3xl flex flex-col overflow-hidden">
+            
+            <!-- Header Watak -->
+            <div id="modal-header-bg" class="bg-emerald-700 text-white p-3.5 border-b-4 border-slate-900 flex justify-between items-center gap-2">
+                <div>
+                    <span id="modal-category-badge" class="text-[10px] font-black bg-amber-300 text-slate-950 px-2.5 py-0.5 rounded-full uppercase">
+                        WATAK ORANG DEWASA
+                    </span>
+                    <h2 id="modal-station-title" class="font-display text-base sm:text-xl mt-1 leading-tight">
+                        Adab Memberi Salam & Bersalam
+                    </h2>
+                </div>
+                <button type="button" onclick="closeTutorialModal()" class="game-btn bg-rose-500 text-white px-3 py-1.5 rounded-xl font-black text-xs shrink-0">
+                    ✖ Tutup
+                </button>
+            </div>
+
+            <!-- Kandungan Tutorial & Pilihan Demonstrasi -->
+            <div id="modal-body" class="p-4 sm:p-5 scrollable-area flex-1 space-y-3.5 text-slate-900 text-xs sm:text-sm">
+                <!-- Diisi secara dinamik mengikut stesen -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- MODAL 3: TETAPAN (SETTINGS: LAGU, RESOLUTION, CONTROLLER, FULLSCREEN) -->
+    <!-- ========================================================= -->
+    <div id="settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/80">
+        <div class="game-panel w-full max-w-md max-h-[92%] rounded-3xl p-4 sm:p-5 scrollable-area space-y-3.5">
+            <div class="flex justify-between items-center border-b-2 border-slate-200 pb-2">
+                <h2 class="font-display text-lg sm:text-xl text-slate-900 flex items-center gap-2">
+                    <span>⚙️</span> TETAPAN PERMAINAN
+                </h2>
+                <button type="button" onclick="closeSettingsModal()" class="game-btn bg-rose-500 text-white px-3 py-1 rounded-xl font-black text-xs">✖</button>
+            </div>
+
+            <!-- 1. Lagu & Kesan Bunyi -->
+            <div class="bg-slate-50 p-3 rounded-2xl border-2 border-slate-300 space-y-2.5">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <p class="font-black text-slate-900 text-xs sm:text-sm">🎵 Lagu Latar Harmoni</p>
+                        <p class="text-[11px] text-slate-600 font-semibold">Melodi ceria semasa meneroka taman</p>
+                    </div>
+                    <button type="button" id="btn-toggle-music" onclick="toggleMusic()" class="game-btn bg-emerald-400 text-slate-950 px-3 py-1.5 rounded-xl text-xs font-black">
+                        HIDUP (ON)
+                    </button>
+                </div>
+                <div>
+                    <div class="flex justify-between text-xs font-extrabold text-slate-700 mb-1">
+                        <span>Kelantangan Audio</span>
+                        <span id="volume-label">70%</span>
+                    </div>
+                    <input type="range" min="0" max="100" value="70" oninput="changeVolume(this.value)" class="w-full accent-emerald-600 cursor-pointer h-2.5 bg-slate-300 rounded-lg">
+                </div>
+            </div>
+
+            <!-- 2. Resolusi Grafik (Resolution) -->
+            <div class="bg-slate-50 p-3 rounded-2xl border-2 border-slate-300 space-y-2">
+                <p class="font-black text-slate-900 text-xs sm:text-sm">🖥️ Resolusi Grafik 3D (Resolution)</p>
+                <p class="text-[11px] text-slate-600 font-semibold">Pilih tahap grafik mengikut kelancaran peranti anda:</p>
+                <div class="grid grid-cols-3 gap-2">
+                    <button type="button" id="res-low" onclick="setResolution('low')" class="game-btn bg-white text-slate-800 py-2 rounded-xl text-xs font-extrabold flex-col">
+                        <span>Rendah</span>
+                        <span class="text-[10px] font-normal">(0.65x Jimat)</span>
+                    </button>
+                    <button type="button" id="res-med" onclick="setResolution('med')" class="game-btn bg-emerald-400 text-slate-950 py-2 rounded-xl text-xs font-extrabold flex-col">
+                        <span>Sederhana</span>
+                        <span class="text-[10px] font-normal">(1.0x Normal)</span>
+                    </button>
+                    <button type="button" id="res-high" onclick="setResolution('high')" class="game-btn bg-white text-slate-800 py-2 rounded-xl text-xs font-extrabold flex-col">
+                        <span>Tinggi</span>
+                        <span class="text-[10px] font-normal">(1.5x Tajam)</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 3. Pengawal (Controller: Keyboard / Touchscreen) -->
+            <div class="bg-slate-50 p-3 rounded-2xl border-2 border-slate-300 space-y-2">
+                <p class="font-black text-slate-900 text-xs sm:text-sm">🎮 Jenis Pengawal (Controller)</p>
+                <div class="grid grid-cols-3 gap-2">
+                    <button type="button" id="ctrl-auto" onclick="setControllerMode('auto')" class="game-btn bg-emerald-400 text-slate-950 py-2 rounded-xl text-xs font-extrabold">
+                        Auto
+                    </button>
+                    <button type="button" id="ctrl-touch" onclick="setControllerMode('touch')" class="game-btn bg-white text-slate-800 py-2 rounded-xl text-xs font-extrabold">
+                        📱 Touch
+                    </button>
+                    <button type="button" id="ctrl-keyboard" onclick="setControllerMode('keyboard')" class="game-btn bg-white text-slate-800 py-2 rounded-xl text-xs font-extrabold">
+                        ⌨️ Keyboard
+                    </button>
+                </div>
+                <div class="pt-1">
+                    <div class="flex justify-between text-xs font-extrabold text-slate-700 mb-1">
+                        <span>Kelajuan Pusingan 360°</span>
+                        <span id="sens-label">Sederhana</span>
+                    </div>
+                    <input type="range" min="1" max="3" value="2" oninput="changeSensitivity(this.value)" class="w-full accent-sky-600 cursor-pointer h-2 bg-slate-300 rounded-lg">
+                </div>
+            </div>
+
+            <!-- 4. Skrin Penuh (Fullscreen) & Menu Utama -->
+            <div class="grid grid-cols-1 gap-2 pt-1">
+                <button type="button" id="btn-settings-fullscreen" onclick="toggleFullscreenMode()" class="game-btn bg-indigo-600 text-white w-full py-2.5 rounded-2xl text-xs font-black gap-1.5">
+                    <span>⛶</span> <span id="fs-btn-label">Togol Skrin Penuh (Fullscreen)</span>
+                </button>
+                <button type="button" onclick="returnToMainMenu()" class="game-btn bg-amber-300 text-slate-950 w-full py-2.5 rounded-2xl text-xs font-black">
+                    🏠 Kembali ke Menu Utama
+                </button>
+                <button type="button" onclick="closeSettingsModal()" class="game-btn bg-emerald-500 text-slate-950 w-full py-2.5 rounded-2xl text-xs font-black">
+                    ▶️ Sambung Permainan
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- MODAL 4: SIJIL TAMAT TUTORIAL DUTA ADAB                   -->
+    <!-- ========================================================= -->
+    <div id="victory-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/85">
+        <div class="game-panel w-full max-w-lg max-h-[92%] rounded-3xl p-5 text-center scrollable-area space-y-3.5">
+            <div class="text-5xl animate-bounce">🏆⭐🎉</div>
+            <h2 class="font-display text-2xl sm:text-3xl text-emerald-700">TAHNIAH, DUTA ADAB!</h2>
+            <p class="text-xs sm:text-sm font-bold text-slate-700">
+                Syabas! Kamu telah berjaya melakukan kesemua <b>5 demonstrasi pergaulan beradab</b> bersama orang dewasa dan kanak-kanak dengan cemerlang.
+            </p>
+            <div class="bg-amber-50 border-2 border-amber-400 rounded-2xl p-3 text-left text-xs space-y-1 font-bold text-slate-800">
+                <p class="font-black text-amber-900">✅ Ringkasan Amalan Santun Kamu:</p>
+                <p>1. Memberi salam & bersalam cium tangan dengan orang tua.</p>
+                <p>2. Menunduk hormat & meminta izin apabila melintas di hadapan orang dewasa.</p>
+                <p>3. Bercakap lemah lembut & membantu kanak-kanak yang terjatuh.</p>
+                <p>4. Mendamaikan rakan serta mengamalkan sikap berkongsi permainan.</p>
+                <p>5. Menghulurkan dua tangan & mengucapkan terima kasih apabila menerima pemberian.</p>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                <button type="button" onclick="closeVictoryModal()" class="game-btn bg-sky-400 text-slate-950 py-3 rounded-2xl font-black text-xs">
+                    🌍 Terus Jalan 360°
+                </button>
+                <button type="button" onclick="restartGame()" class="game-btn bg-emerald-500 text-slate-950 py-3 rounded-2xl font-black text-xs">
+                    🔄 Main Semula Tutorial
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================================= -->
+    <!-- SKRIP UTAMA: DATA TUTORIAL, AUDIO WEB & ENJIN 3D FPV 360° -->
+    <!-- ========================================================= -->
+    <script>
+        /* ============================================================================
+           1. DATA 5 STESEN TUTORIAL & DEMONSTRASI BERADAB (DEWASA & KANAK-KANAK)
+           ============================================================================ */
+        const STATIONS_DATA = [
+            {
+                id: 0,
+                category: "WATAK ORANG DEWASA",
+                headerBg: "bg-amber-700",
+                npcName: "Pak Cik Ahmad",
+                title: "Tutorial 1: Adab Memberi Salam & Bersalam",
+                pos: { x: 0, z: -13 },
+                scenario: "Kamu terserempak dengan <b>Pak Cik Ahmad</b> (jiran yang lebih tua) di laluan taman. Tunjukkan cara menegur dan bersalaman yang paling beradab.",
+                tutorialSteps: [
+                    "1. Ukirkan senyuman manis dan ucapkan salam dengan jelas.",
+                    "2. Hulurkan tangan kanan dengan lembut sambil menundukkan sedikit badan tanda hormat.",
+                    "3. Cium belakang tangan orang tua dengan sopan."
+                ],
+                choices: [
+                    { text: "Terus berjalan laju tanpa memandang Pak Cik Ahmad.", correct: false, feedback: "Kurang sopan! Apabila bertemu orang yang lebih tua, kita hendaklah menyapa dan memberi salam." },
+                    { text: "\"Assalamualaikum Pak Cik Ahmad, apa khabar?\" (Hulur tangan kanan & cium tangan dengan sopan).", correct: true, feedback: "Tepat sekali! Memberi salam dan bersalam dengan tunduk hormat menunjukkan ketinggian budi pekerti." },
+                    { text: "\"Hoi pak cik, nak pergi mana tu?\" sambil melambai dari jauh.", correct: false, feedback: "Panggilan dan nada suara kurang beradab terhadap golongan dewasa." }
+                ],
+                demoAnim: "salam",
+                demoBtnLabel: "🤝 Lakukan Demonstrasi Bersalam 3D",
+                demoSuccessMsg: "Demonstrasi Berjaya! Pak Cik Ahmad tersenyum gembira menjawab salam kamu."
+            },
+            {
+                id: 1,
+                category: "WATAK ORANG DEWASA",
+                headerBg: "bg-amber-800",
+                npcName: "Mak Cik Salmah & Tok Wan",
+                title: "Tutorial 2: Adab Melintas di Hadapan Orang Tua",
+                pos: { x: 14, z: -4 },
+                scenario: "<b>Mak Cik Salmah dan Tok Wan</b> sedang duduk berbual di bangku taman. Laluan kamu perlu melintasi hadapan mereka. Bagaimanakah cara melintas yang santun?",
+                tutorialSteps: [
+                    "1. Perlahankan langkah kaki (jangan berlari).",
+                    "2. Tundukkan sedikit badan dan hulurkan tangan kanan ke bawah.",
+                    "3. Ucapkan 'Maaf, tumpang lalu mak cik, Tok Wan' dengan nada lembut."
+                ],
+                choices: [
+                    { text: "Berlari melintas di hadapan mereka sambil menjerit.", correct: false, feedback: "Tidak sopan! Berlari di hadapan orang tua boleh mengejutkan dan mengganggu mereka." },
+                    { text: "Perlahankan langkah, tundukkan sedikit badan dan ucapkan: \"Maaf, tumpang lalu mak cik, Tok Wan.\"", correct: true, feedback: "Syabas! Menundukkan badan dan meminta izin melintas adalah budaya santun yang sangat mulia." },
+                    { text: "Berdiri tegak menghalang pandangan mereka.", correct: false, feedback: "Kurang beradab. Kita perlu melintas dengan tertib tanpa menghalang mereka." }
+                ],
+                demoAnim: "bow",
+                demoBtnLabel: "🙇 Lakukan Demonstrasi Tunduk Hormat 3D",
+                demoSuccessMsg: "Demonstrasi Berjaya! Mak Cik Salmah dan Tok Wan memuji kesopanan kamu."
+            },
+            {
+                id: 2,
+                category: "WATAK KANAK-KANAK",
+                headerBg: "bg-sky-700",
+                npcName: "Adik Aiman (7 Tahun)",
+                title: "Tutorial 3: Bercakap Lemah Lembut & Menolong Kanak-Kanak",
+                pos: { x: 11, z: 12 },
+                scenario: "<b>Adik Aiman</b> (kanak-kanak) terjatuh ketika bermain di taman dan hampir menangis. Tunjukkan cara kamu menyantuni dan membantunya.",
+                tutorialSteps: [
+                    "1. Hampirinya dengan tenang dan gunakan nada suara yang memujuk.",
+                    "2. Hulurkan tangan untuk membantu adik bangun.",
+                    "3. Tanya keadaannya dengan penuh kasih sayang."
+                ],
+                choices: [
+                    { text: "Ketawakan Adik Aiman: \"Haha! Siapa suruh lari laju-laju!\"", correct: false, feedback: "Tidak baik! Islam melarang kita mengejek atau mentertawakan kesusahan orang lain." },
+                    { text: "\"Jangan menangis ya dik, mari abang/kakak tolong bangunkan. Adik sakit di mana?\" (Hulur tangan membantu).", correct: true, feedback: "Cemerlang! Menyayangi kanak-kanak yang lebih muda dengan tutur kata lembut ialah sunnah Rasulullah SAW." },
+                    { text: "Marah adik itu kerana tidak berhati-hati.", correct: false, feedback: "Kanak-kanak yang sedang sakit perlu dipujuk dengan lembut, bukan dimarahi." }
+                ],
+                demoAnim: "help",
+                demoBtnLabel: "🤲 Lakukan Demonstrasi Hulur Tangan Menolong 3D",
+                demoSuccessMsg: "Demonstrasi Berjaya! Adik Aiman berhenti menangis dan mengucapkan terima kasih."
+            },
+            {
+                id: 3,
+                category: "WATAK KANAK-KANAK",
+                headerBg: "bg-blue-700",
+                npcName: "Zara & Danial (9 Tahun)",
+                title: "Tutorial 4: Berkongsi & Bertolak Ansur Sesama Rakan",
+                pos: { x: -11, z: 12 },
+                scenario: "Dua orang kanak-kanak, <b>Zara dan Danial</b>, sedang bertengkar kerana berebut sebiji bola di padang taman. Tunjukkan cara mendamaikan mereka secara berhemah.",
+                tutorialSteps: [
+                    "1. Tegur dengan wajah ceria dan tidak menyebelahi mana-mana pihak.",
+                    "2. Cadangkan penyelesaian adil seperti bermain bersama atau bergilir.",
+                    "3. Galakkan mereka bermaafan."
+                ],
+                choices: [
+                    { text: "Merampas bola itu dan bawa lari.", correct: false, feedback: "Tindakan itu akan membuatkan kedua-dua kanak-kanak itu lebih sedih dan marah." },
+                    { text: "\"Zara, Danial, mari kita main bola ini sama-sama secara bergilir, pasti lagi seronok!\"", correct: true, feedback: "Hebat! Mendamaikan rakan dan mengajak berkongsi dapat memupuk kasih sayang dan mengelakkan pergaduhan." },
+                    { text: "Menyuruh mereka terus bergaduh siapa paling kuat.", correct: false, feedback: "Kita hendaklah menjadi pendamai, bukan batu api." }
+                ],
+                demoAnim: "share",
+                demoBtnLabel: "🤗 Lakukan Demonstrasi Mendamaikan 3D",
+                demoSuccessMsg: "Demonstrasi Berjaya! Zara dan Danial berdamai dan bermain bersama dengan gembira."
+            },
+            {
+                id: 4,
+                category: "WATAK ORANG DEWASA",
+                headerBg: "bg-emerald-700",
+                npcName: "Cikgu Hajar",
+                title: "Tutorial 5: Adab Menerima Pemberian & Berterima Kasih",
+                pos: { x: -14, z: -4 },
+                scenario: "<b>Cikgu Hajar</b> menghulurkan sebungkus buku cerita dan buah-buahan sebagai hadiah penghargaan kepada kamu. Tunjukkan adab menerima pemberian orang dewasa.",
+                tutorialSteps: [
+                    "1. Hulurkan kedua-dua belah tangan dengan tertib.",
+                    "2. Ukirkan senyuman dan pandang wajah pemberi dengan hormat.",
+                    "3. Ucapkan 'Terima kasih, Cikgu Hajar' dengan ikhlas."
+                ],
+                choices: [
+                    { text: "Menarik bungkusan itu dengan sebelah tangan kiri tanpa berkata apa-apa.", correct: false, feedback: "Kurang beradab! Gunakan tangan kanan atau kedua-dua belah tangan dan ucapkan terima kasih." },
+                    { text: "Hulurkan kedua-dua belah tangan sambil tersenyum: \"Terima kasih banyak-banyak, Cikgu Hajar!\"", correct: true, feedback: "Sempurna! Menghulurkan kedua-dua belah tangan dan berterima kasih mencerminkan akhlak terpuji." },
+                    { text: "Merungut: \"Kenapa hadiah ini kecil sahaja cikgu?\"", correct: false, feedback: "Kita hendaklah bersyukur dan menghargai setiap pemberian orang lain." }
+                ],
+                demoAnim: "receive",
+                demoBtnLabel: "🙌 Lakukan Demonstrasi Terima Pemberian 3D",
+                demoSuccessMsg: "Demonstrasi Berjaya! Cikgu Hajar sangat bangga dengan akhlak mulia kamu."
+            }
+        ];
+
+        /* ============================================================================
+           2. ENJIN AUDIO WEB (LAGU HARMONI & KESAN BUNYI)
+           ============================================================================ */
+        let audioCtx = null;
+        let isMusicOn = true;
+        let masterVolume = 0.7;
+        let bgmTimer = null;
+        let melodyIndex = 0;
+
+        // Melodi pentatonik lembut & ceria
+        const BGM_FREQS = [
+            261.63, 293.66, 329.63, 392.00, 440.00, 392.00, 329.63, 293.66,
+            329.63, 392.00, 523.25, 440.00, 392.00, 329.63, 293.66, 261.63
+        ];
+
+        function initAudio() {
+            try {
+                if (!audioCtx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (AudioContext) audioCtx = new AudioContext();
+                }
+                if (audioCtx && audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                if (!bgmTimer) {
+                    bgmTimer = setInterval(() => {
+                        if (!isMusicOn || !audioCtx || masterVolume <= 0 || audioCtx.state === 'suspended') return;
+                        const freq = BGM_FREQS[melodyIndex % BGM_FREQS.length];
+                        melodyIndex++;
+
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+                        const vol = 0.06 * masterVolume;
+                        gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(Math.max(0.001, vol), audioCtx.currentTime + 0.06);
+                        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.6);
+
+                        osc.connect(gain);
+                        gain.connect(audioCtx.destination);
+                        osc.start();
+                        osc.stop(audioCtx.currentTime + 0.65);
+                    }, 620);
+                }
+            } catch (e) {}
+        }
+
+        function playSfx(type) {
+            try {
+                if (!audioCtx) initAudio();
+                if (!audioCtx || masterVolume <= 0) return;
+                const now = audioCtx.currentTime;
+                const vol = 0.16 * masterVolume;
+
+                if (type === 'click') {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(480, now);
+                    osc.frequency.exponentialRampToValueAtTime(680, now + 0.08);
+                    gain.gain.setValueAtTime(vol, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.1);
+                } else if (type === 'success') {
+                    [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => {
+                        const osc = audioCtx.createOscillator();
+                        const gain = audioCtx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(f, now + i * 0.08);
+                        gain.gain.setValueAtTime(vol, now + i * 0.08);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.25);
+                        osc.connect(gain);
+                        gain.connect(audioCtx.destination);
+                        osc.start(now + i * 0.08);
+                        osc.stop(now + i * 0.08 + 0.26);
+                    });
+                } else if (type === 'wrong') {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(190, now);
+                    osc.frequency.linearRampToValueAtTime(125, now + 0.22);
+                    gain.gain.setValueAtTime(vol * 0.8, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.25);
+                }
+            } catch (e) {}
+        }
+
+        function toggleMusic() {
+            initAudio();
+            isMusicOn = !isMusicOn;
+            const btn = document.getElementById('btn-toggle-music');
+            if (isMusicOn) {
+                btn.textContent = "HIDUP (ON)";
+                btn.className = "game-btn bg-emerald-400 text-slate-950 px-3 py-1.5 rounded-xl text-xs font-black";
+                playSfx('click');
+            } else {
+                btn.textContent = "MATI (OFF)";
+                btn.className = "game-btn bg-rose-500 text-white px-3 py-1.5 rounded-xl text-xs font-black";
+            }
+        }
+
+        function changeVolume(val) {
+            masterVolume = val / 100;
+            document.getElementById('volume-label').textContent = val + "%";
+        }
+
+        /* ============================================================================
+           3. ENJIN DUNIA 3D THREE.JS (FPV 360°, TANGAN PEMAIN, WATAK DEWASA & KANAK-KANAK)
+           ============================================================================ */
+        let scene, camera, renderer;
+        let leftArmGroup, rightArmGroup, fpvHandsRig;
+        let npcEntities = [];
+        let completedStations = new Set();
+        let activeStationIdx = null;
+        let nearestStationIdx = null;
+        let isGameRunning = false;
+        let isModalOpen = false;
+        let lookSensitivity = 1.0;
+        let controllerMode = 'auto'; // 'auto', 'touch', 'keyboard'
+
+        // Status Animasi Tangan First-Person
+        let currentHandAction = 'idle'; // 'idle', 'wave', 'salam', 'bow', 'help', 'share', 'receive'
+        let handActionTimer = 0;
+
+        // Keadaan Pemain 360°
+        const player = {
+            pos: new THREE.Vector3(0, 1.65, 2),
+            yaw: 0,
+            pitch: 0,
+            speed: 7.5,
+            turnSpeed: 2.3,
+            baseEyeHeight: 1.65
+        };
+
+        const joyMove = { forward: 0, right: 0 };
+        const turnBtnState = { left: false, right: false };
+        const keyState = {};
+
+        function initThreeWorld() {
+            const canvas = document.getElementById('game-canvas');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x7dd3fc);
+            scene.fog = new THREE.Fog(0xbae6fd, 24, 65);
+
+            const w = window.innerWidth || 800;
+            const h = window.innerHeight || 600;
+            camera = new THREE.PerspectiveCamera(70, w / h, 0.1, 100);
+            camera.rotation.order = 'YXZ';
+            scene.add(camera);
+
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(w, h);
+            setResolution('med');
+
+            // Pencahayaan Taman Cerah
+            const hemiLight = new THREE.HemisphereLight(0xffffff, 0x3f6212, 0.85);
+            scene.add(hemiLight);
+
+            const sunLight = new THREE.DirectionalLight(0xfffbeb, 0.85);
+            sunLight.position.set(16, 28, 12);
+            scene.add(sunLight);
+
+            buildCommunityPark();
+            buildFirstPersonHands();
+            spawnAllCharacters();
+            setupInputControllers();
+
+            window.addEventListener('resize', handleResize);
+            if (typeof ResizeObserver !== 'undefined') {
+                new ResizeObserver(() => handleResize()).observe(document.body);
+            }
+        }
+
+        function buildCommunityPark() {
+            // Rumput Hijau Taman
+            const grassMat = new THREE.MeshLambertMaterial({ color: 0x4ade80 });
+            const ground = new THREE.Mesh(new THREE.PlaneGeometry(70, 70), grassMat);
+            ground.rotation.x = -Math.PI / 2;
+            scene.add(ground);
+
+            // Laluan Pejalan Kaki (Bulatan Tengah + Laluan ke Setiap Stesen)
+            const pathMat = new THREE.MeshLambertMaterial({ color: 0xfde68a });
+            const centerPlaza = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 0.04, 24), pathMat);
+            centerPlaza.position.y = 0.02;
+            scene.add(centerPlaza);
+
+            STATIONS_DATA.forEach(st => {
+                const dist = Math.hypot(st.pos.x, st.pos.z);
+                const angle = Math.atan2(st.pos.x, st.pos.z);
+                const walkway = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.04, dist), pathMat);
+                walkway.position.set(st.pos.x / 2, 0.02, st.pos.z / 2);
+                walkway.rotation.y = angle;
+                scene.add(walkway);
+            });
+
+            // Pagar Kayu Sempadan Taman
+            const fenceMat = new THREE.MeshLambertMaterial({ color: 0x92400e });
+            [
+                { x: 0, z: -22, w: 44, d: 0.4 },
+                { x: 0, z: 22, w: 44, d: 0.4 },
+                { x: -22, z: 0, w: 0.4, d: 44 },
+                { x: 22, z: 0, w: 0.4, d: 44 }
+            ].forEach(f => {
+                const fence = new THREE.Mesh(new THREE.BoxGeometry(f.w, 1.3, f.d), fenceMat);
+                fence.position.set(f.x, 0.65, f.z);
+                scene.add(fence);
+            });
+
+            // Pokok Rendang & Bunga Hiasan
+            const trunkMat = new THREE.MeshLambertMaterial({ color: 0x78350f });
+            const leafMat = new THREE.MeshLambertMaterial({ color: 0x15803d });
+            const flowerColors = [0xf43f5e, 0xf59e0b, 0xa855f7, 0x3b82f6];
+
+            [[-8, -10], [8, -12], [-16, 6], [17, 5], [0, 17], [-17, -15], [16, -15]].forEach(([tx, tz]) => {
+                const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 2.8, 8), trunkMat);
+                trunk.position.set(tx, 1.4, tz);
+                scene.add(trunk);
+
+                const crown = new THREE.Mesh(new THREE.DodecahedronGeometry(2.1, 1), leafMat);
+                crown.position.set(tx, 3.8, tz);
+                scene.add(crown);
+            });
+
+            // Bangku Taman di Stesen 2 (Mak Cik Salmah & Tok Wan)
+            const bench = new THREE.Mesh(
+                new THREE.BoxGeometry(2.6, 0.55, 0.8),
+                new THREE.MeshLambertMaterial({ color: 0xb45309 })
+            );
+            bench.position.set(14.8, 0.28, -4);
+            bench.rotation.y = -Math.PI / 2;
+            scene.add(bench);
+
+            // Rumpun Bunga
+            for (let i = 0; i < 18; i++) {
+                const angle = (i / 18) * Math.PI * 2;
+                const r = 19;
+                const flower = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.3, 8, 8),
+                    new THREE.MeshLambertMaterial({ color: flowerColors[i % flowerColors.length] })
+                );
+                flower.position.set(Math.cos(angle) * r, 0.3, Math.sin(angle) * r);
+                scene.add(flower);
+            }
+        }
+
+        // Membina Tangan/Lengan Pemain First-Person yang Melekat pada Kamera 360°
+        function buildFirstPersonHands() {
+            fpvHandsRig = new THREE.Group();
+            const skinMat = new THREE.MeshLambertMaterial({ color: 0xfdba74 });
+            const sleeveMat = new THREE.MeshLambertMaterial({ color: 0x0284c7 });
+
+            function createArm() {
+                const arm = new THREE.Group();
+                const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.075, 0.35, 10), sleeveMat);
+                sleeve.rotation.x = Math.PI / 2.4;
+                sleeve.position.set(0, -0.05, -0.15);
+                arm.add(sleeve);
+
+                const hand = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.06, 0.16), skinMat);
+                hand.position.set(0, -0.12, -0.35);
+                arm.add(hand);
+                return arm;
+            }
+
+            leftArmGroup = createArm();
+            leftArmGroup.position.set(-0.34, -0.26, -0.25);
+
+            rightArmGroup = createArm();
+            rightArmGroup.position.set(0.34, -0.26, -0.25);
+
+            fpvHandsRig.add(leftArmGroup);
+            fpvHandsRig.add(rightArmGroup);
+            camera.add(fpvHandsRig);
+        }
+
+        // Membina Model Watak 3D Orang Dewasa & Kanak-Kanak
+        function createHumanCharacter(options) {
+            const group = new THREE.Group();
+            const isChild = options.isChild;
+            const scale = isChild ? 0.68 : 1.0;
+
+            const skinMat = new THREE.MeshLambertMaterial({ color: options.skinColor || 0xfdba74 });
+            const shirtMat = new THREE.MeshLambertMaterial({ color: options.shirtColor });
+            const pantsMat = new THREE.MeshLambertMaterial({ color: options.pantsColor || 0x1e293b });
+
+            // Kaki
+            const legGeo = new THREE.CylinderGeometry(0.11, 0.1, 0.75, 8);
+            const leftLeg = new THREE.Mesh(legGeo, pantsMat);
+            leftLeg.position.set(-0.15, 0.375, 0);
+            group.add(leftLeg);
+
+            const rightLeg = new THREE.Mesh(legGeo, pantsMat);
+            rightLeg.position.set(0.15, 0.375, 0);
+            group.add(rightLeg);
+
+            // Badan
+            const body = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.72, 0.3), shirtMat);
+            body.position.set(0, 1.1, 0);
+            group.add(body);
+
+            // Kepala
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 14, 14), skinMat);
+            head.position.set(0, 1.72, 0);
+            group.add(head);
+
+            // Hiasan Kepala (Songkok / Tudung / Topi Kanak-Kanak)
+            if (options.headwear === 'songkok') {
+                const songkok = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.21, 0.22, 0.18, 12),
+                    new THREE.MeshLambertMaterial({ color: 0x0f172a })
+                );
+                songkok.position.set(0, 1.92, 0);
+                group.add(songkok);
+            } else if (options.headwear === 'tudung') {
+                const tudung = new THREE.Mesh(
+                    new THREE.ConeGeometry(0.34, 0.68, 12),
+                    new THREE.MeshLambertMaterial({ color: options.headwearColor || 0xfef08a })
+                );
+                tudung.position.set(0, 1.62, -0.02);
+                group.add(tudung);
+            } else if (options.headwear === 'cap') {
+                const cap = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.25, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+                    new THREE.MeshLambertMaterial({ color: 0xef4444 })
+                );
+                cap.position.set(0, 1.75, 0);
+                group.add(cap);
+            }
+
+            // Lengan Kiri & Kanan
+            const armGeo = new THREE.CylinderGeometry(0.08, 0.07, 0.62, 8);
+            const leftArm = new THREE.Mesh(armGeo, shirtMat);
+            leftArm.position.set(-0.36, 1.15, 0);
+            group.add(leftArm);
+
+            const rightArm = new THREE.Mesh(armGeo, shirtMat);
+            rightArm.position.set(0.36, 1.15, 0);
+            group.add(rightArm);
+
+            group.scale.set(scale, scale, scale);
+            group.userData = { rightArm, leftArm, head, isChild };
+            return group;
+        }
+
+        function spawnAllCharacters() {
+            STATIONS_DATA.forEach((st, idx) => {
+                const container = new THREE.Group();
+                container.position.set(st.pos.x, 0, st.pos.z);
+
+                // Gelung Penanda Stesen di Lantai
+                const ringMat = new THREE.MeshBasicMaterial({
+                    color: idx === 2 || idx === 3 ? 0x38bdf8 : 0xfbbf24,
+                    side: THREE.DoubleSide
+                });
+                const ring = new THREE.Mesh(new THREE.RingGeometry(1.7, 2.1, 24), ringMat);
+                ring.rotation.x = -Math.PI / 2;
+                ring.position.y = 0.05;
+                container.add(ring);
+
+                let mainChar;
+                if (idx === 0) {
+                    // Pak Cik Ahmad (Orang Dewasa)
+                    mainChar = createHumanCharacter({ isChild: false, shirtColor: 0x15803d, headwear: 'songkok' });
+                    container.add(mainChar);
+                } else if (idx === 1) {
+                    // Mak Cik Salmah & Tok Wan (2 Orang Dewasa)
+                    mainChar = createHumanCharacter({ isChild: false, shirtColor: 0xbe185d, headwear: 'tudung', headwearColor: 0xfce7f3 });
+                    mainChar.position.set(0.4, 0, -0.5);
+                    container.add(mainChar);
+
+                    const tokWan = createHumanCharacter({ isChild: false, shirtColor: 0x78350f, headwear: 'songkok' });
+                    tokWan.position.set(0.4, 0, 0.55);
+                    container.add(tokWan);
+                } else if (idx === 2) {
+                    // Adik Aiman (Kanak-Kanak - keadaan duduk terjatuh sebelum dibantu)
+                    mainChar = createHumanCharacter({ isChild: true, shirtColor: 0x0284c7, headwear: 'cap' });
+                    mainChar.position.y = -0.35;
+                    mainChar.rotation.x = -0.35;
+                    container.add(mainChar);
+                } else if (idx === 3) {
+                    // Zara & Danial (2 Kanak-Kanak + Bola)
+                    mainChar = createHumanCharacter({ isChild: true, shirtColor: 0x9333ea, headwear: 'tudung', headwearColor: 0xe9d5ff });
+                    mainChar.position.set(-0.55, 0, 0);
+                    container.add(mainChar);
+
+                    const danial = createHumanCharacter({ isChild: true, shirtColor: 0xea580c, headwear: 'cap' });
+                    danial.position.set(0.55, 0, 0);
+                    container.add(danial);
+
+                    const ball = new THREE.Mesh(
+                        new THREE.SphereGeometry(0.24, 12, 12),
+                        new THREE.MeshLambertMaterial({ color: 0xfacc15 })
+                    );
+                    ball.position.set(0, 0.24, 0.35);
+                    container.add(ball);
+                } else if (idx === 4) {
+                    // Cikgu Hajar (Orang Dewasa)
+                    mainChar = createHumanCharacter({ isChild: false, shirtColor: 0x0d9488, headwear: 'tudung', headwearColor: 0xccfbf1 });
+                    container.add(mainChar);
+                }
+
+                // Papan Nama Terapung di Atas Watak
+                const badgeSprite = createNameplateSprite(`STESEN ${idx + 1}: ${st.npcName}`);
+                badgeSprite.position.set(0, mainChar.userData.isChild ? 1.85 : 2.45, 0);
+                container.add(badgeSprite);
+
+                // Pusingkan watak menghadap ke tengah taman
+                container.lookAt(0, 0, 0);
+
+                scene.add(container);
+                npcEntities.push({ container, mainChar, ring, data: st });
+            });
+        }
+
+        function createNameplateSprite(text) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 110;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+            ctx.fillRect(16, 14, 480, 82);
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 5;
+            ctx.strokeRect(16, 14, 480, 82);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 28px Nunito, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 256, 55);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex }));
+            sprite.scale.set(3.4, 0.74, 1);
+            return sprite;
+        }
+
+        /* ============================================================================
+           4. KAWALAN DWI-MOD 360° (TOUCHSCREEN & KEYBOARD)
+           ============================================================================ */
+        function setupInputControllers() {
+            // 1. Virtual Joystick (Touchscreen Kiri)
+            const joyZone = document.getElementById('joystick-zone');
+            const joyKnob = document.getElementById('joystick-knob');
+            let joyTouchId = null;
+            const maxRadius = 40;
+
+            joyZone.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const t = e.changedTouches[0];
+                joyTouchId = t.identifier;
+                updateJoystick(t.clientX, t.clientY);
+            }, { passive: false });
+
+            joyZone.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    if (e.changedTouches[i].identifier === joyTouchId) {
+                        updateJoystick(e.changedTouches[i].clientX, e.changedTouches[i].clientY);
+                    }
+                }
+            }, { passive: false });
+
+            const resetJoy = (e) => {
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    if (e.changedTouches[i].identifier === joyTouchId) {
+                        joyTouchId = null;
+                        joyKnob.style.transform = `translate(0px, 0px)`;
+                        joyMove.forward = 0;
+                        joyMove.right = 0;
+                    }
+                }
+            };
+            joyZone.addEventListener('touchend', resetJoy);
+            joyZone.addEventListener('touchcancel', resetJoy);
+
+            function updateJoystick(cx, cy) {
+                const rect = joyZone.getBoundingClientRect();
+                let dx = cx - (rect.left + rect.width / 2);
+                let dy = cy - (rect.top + rect.height / 2);
+                const dist = Math.hypot(dx, dy);
+                if (dist > maxRadius) {
+                    dx = (dx / dist) * maxRadius;
+                    dy = (dy / dist) * maxRadius;
+                }
+                joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+                joyMove.right = dx / maxRadius;
+                joyMove.forward = -dy / maxRadius;
+            }
+
+            // 2. Zon Seret Kamera 360 Darjah (Touchscreen Kanan)
+            const lookZone = document.getElementById('look-zone');
+            let lookTouchId = null;
+            let lastX = 0, lastY = 0;
+
+            lookZone.addEventListener('touchstart', (e) => {
+                if (!isGameRunning || isModalOpen) return;
+                e.preventDefault();
+                const t = e.changedTouches[0];
+                lookTouchId = t.identifier;
+                lastX = t.clientX;
+                lastY = t.clientY;
+            }, { passive: false });
+
+            lookZone.addEventListener('touchmove', (e) => {
+                if (!isGameRunning || isModalOpen) return;
+                e.preventDefault();
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    const t = e.changedTouches[i];
+                    if (t.identifier === lookTouchId) {
+                        const dx = t.clientX - lastX;
+                        const dy = t.clientY - lastY;
+                        lastX = t.clientX;
+                        lastY = t.clientY;
+
+                        player.yaw -= dx * 0.006 * lookSensitivity;
+                        player.pitch -= dy * 0.0045 * lookSensitivity;
+                        player.pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, player.pitch));
+                    }
+                }
+            }, { passive: false });
+
+            const endLookTouch = (e) => {
+                for (let i = 0; i < e.changedTouches.length; i++) {
+                    if (e.changedTouches[i].identifier === lookTouchId) lookTouchId = null;
+                }
+            };
+            lookZone.addEventListener('touchend', endLookTouch);
+            lookZone.addEventListener('touchcancel', endLookTouch);
+
+            // 3. Butang Pusing Pantas 360° (↺ / ↻)
+            bindTurnHold('btn-turn-left', 'left');
+            bindTurnHold('btn-turn-right', 'right');
+
+            // 4. Kawalan Keyboard & Tetikus (Mod Keyboard / PC)
+            window.addEventListener('keydown', (e) => {
+                keyState[e.code] = true;
+                if ((e.code === 'Space' || e.code === 'Enter') && isGameRunning && !isModalOpen) {
+                    if (nearestStationIdx !== null) {
+                        triggerStationInteraction();
+                    } else {
+                        performHandAnimation('wave');
+                    }
+                }
+            });
+            window.addEventListener('keyup', (e) => { keyState[e.code] = false; });
+
+            const canvas = renderer.domElement;
+            let mouseDrag = false;
+            canvas.addEventListener('mousedown', (e) => {
+                if (isGameRunning && !isModalOpen && e.target === canvas) {
+                    mouseDrag = true;
+                }
+            });
+            window.addEventListener('mouseup', () => { mouseDrag = false; });
+            window.addEventListener('mousemove', (e) => {
+                if (!mouseDrag || !isGameRunning || isModalOpen) return;
+                player.yaw -= e.movementX * 0.0045 * lookSensitivity;
+                player.pitch -= e.movementY * 0.004 * lookSensitivity;
+                player.pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, player.pitch));
+            });
+        }
+
+        function bindTurnHold(id, dir) {
+            const btn = document.getElementById(id);
+            if (!btn) return;
+            const down = (e) => { e.preventDefault(); e.stopPropagation(); turnBtnState[dir] = true; btn.classList.add('pressed'); };
+            const up = (e) => { if (e) e.stopPropagation(); turnBtnState[dir] = false; btn.classList.remove('pressed'); };
+            btn.addEventListener('pointerdown', down);
+            btn.addEventListener('pointerup', up);
+            btn.addEventListener('pointerleave', up);
+            btn.addEventListener('pointercancel', up);
+        }
+
+        function setControllerMode(mode) {
+            controllerMode = mode;
+            playSfx('click');
+
+            // Kemas kini gaya butang di Menu Utama & Modal Tetapan
+            ['auto', 'touch', 'keyboard'].forEach(m => {
+                const mBtn = document.getElementById('menu-ctrl-' + (m === 'keyboard' ? 'key' : m));
+                const sBtn = document.getElementById('ctrl-' + m);
+                if (mBtn) {
+                    mBtn.className = (m === mode)
+                        ? "game-btn bg-emerald-400 text-slate-950 px-3 py-1.5 rounded-xl text-xs font-extrabold"
+                        : "game-btn bg-white text-slate-800 px-3 py-1.5 rounded-xl text-xs font-extrabold";
+                }
+                if (sBtn) {
+                    sBtn.className = (m === mode)
+                        ? "game-btn bg-emerald-400 text-slate-950 py-2 rounded-xl text-xs font-extrabold"
+                        : "game-btn bg-white text-slate-800 py-2 rounded-xl text-xs font-extrabold";
+                }
+            });
+
+            applyControllerVisibility();
+        }
+
+        function applyControllerVisibility() {
+            const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+            const showTouch = (controllerMode === 'touch') || (controllerMode === 'auto' && isTouchDevice);
+
+            const touchLeft = document.getElementById('touch-left-controls');
+            const touchRight = document.getElementById('touch-right-controls');
+            const lookZone = document.getElementById('look-zone');
+            const keyBar = document.getElementById('keyboard-hint-bar');
+
+            if (showTouch) {
+                touchLeft.classList.remove('hidden');
+                touchRight.classList.remove('hidden');
+                if (isGameRunning) lookZone.classList.remove('hidden');
+                keyBar.classList.add('hidden');
+            } else {
+                touchLeft.classList.add('hidden');
+                touchRight.classList.add('hidden');
+                lookZone.classList.add('hidden');
+                keyBar.classList.remove('hidden');
+            }
+        }
+
+        /* ============================================================================
+           5. LOGIK TUTORIAL, DEMONSTRASI TANGAN 3D & NAVIGASI STESEN
+           ============================================================================ */
+        function startGame() {
+            initAudio();
+            playSfx('click');
+
+            document.getElementById('main-menu').classList.add('hidden');
+            document.getElementById('game-hud').classList.remove('hidden');
+            document.getElementById('controls-overlay').classList.remove('hidden');
+            document.getElementById('crosshair').classList.remove('hidden');
+
+            isGameRunning = true;
+            isModalOpen = false;
+            applyControllerVisibility();
+            performHandAnimation('wave');
+        }
+
+        function restartGame() {
+            completedStations.clear();
+            player.pos.set(0, player.baseEyeHeight, 2);
+            player.yaw = 0;
+            player.pitch = 0;
+
+            // Kembalikan Adik Aiman ke posisi awal
+            if (npcEntities[2]) {
+                npcEntities[2].mainChar.position.y = -0.35;
+                npcEntities[2].mainChar.rotation.x = -0.35;
+            }
+
+            updateProgressHUD();
+            closeVictoryModal();
+            performHandAnimation('wave');
+        }
+
+        function returnToMainMenu() {
+            playSfx('click');
+            isGameRunning = false;
+            isModalOpen = false;
+            closeSettingsModal();
+            closeTutorialModal();
+            closeVictoryModal();
+
+            document.getElementById('game-hud').classList.add('hidden');
+            document.getElementById('controls-overlay').classList.add('hidden');
+            document.getElementById('look-zone').classList.add('hidden');
+            document.getElementById('crosshair').classList.add('hidden');
+            document.getElementById('main-menu').classList.remove('hidden');
+        }
+
+        function teleportToStation(idx) {
+            if (!isGameRunning) return;
+            playSfx('click');
+            const st = STATIONS_DATA[idx];
+            if (!st) return;
+
+            const dist = Math.hypot(st.pos.x, st.pos.z) || 1;
+            const stopDist = Math.max(0, dist - 2.6);
+            const ratio = stopDist / dist;
+
+            player.pos.set(st.pos.x * ratio, player.baseEyeHeight, st.pos.z * ratio);
+            const dx = st.pos.x - player.pos.x;
+            const dz = st.pos.z - player.pos.z;
+            player.yaw = Math.atan2(-dx, -dz);
+            player.pitch = -0.05;
+
+            checkProximityToStations();
+        }
+
+        function triggerStationInteraction() {
+            if (nearestStationIdx === null) return;
+            playSfx('click');
+            openTutorialModal(nearestStationIdx);
+        }
+
+        function openTutorialModal(idx) {
+            isModalOpen = true;
+            activeStationIdx = idx;
+            const st = STATIONS_DATA[idx];
+
+            document.getElementById('modal-header-bg').className = `${st.headerBg} text-white p-3.5 border-b-4 border-slate-900 flex justify-between items-center gap-2`;
+            document.getElementById('modal-category-badge').textContent = `${st.category} • ${st.npcName}`;
+            document.getElementById('modal-station-title').textContent = st.title;
+
+            const stepsHTML = st.tutorialSteps.map(s => `<li>${s}</li>`).join('');
+            const choicesHTML = st.choices.map((c, cIdx) => `
+                <button type="button" onclick="selectTutorialChoice(${cIdx})" class="tut-choice-btn w-full text-left p-3 rounded-2xl bg-white hover:bg-amber-50 border-2 border-slate-300 font-bold text-xs sm:text-sm text-slate-900 flex items-start gap-2.5 shadow-xs">
+                    <span class="bg-slate-900 text-white px-2.5 py-0.5 rounded-lg text-xs font-black mt-0.5 shrink-0">${String.fromCharCode(65 + cIdx)}</span>
+                    <span>${c.text}</span>
+                </button>
+            `).join('');
+
+            document.getElementById('modal-body').innerHTML = `
+                <div class="bg-slate-100 border-l-4 border-slate-800 p-3 rounded-r-2xl">
+                    <p class="font-black text-slate-900 text-xs uppercase">📍 Situasi Semasa:</p>
+                    <p class="mt-1 font-semibold text-slate-800">${st.scenario}</p>
+                </div>
+
+                <div class="bg-amber-50 border-2 border-amber-400 p-3 rounded-2xl">
+                    <p class="font-black text-amber-950 text-xs uppercase">📖 Panduan Tutorial Adab:</p>
+                    <ul class="mt-1 space-y-0.5 font-bold text-amber-900 text-xs">
+                        ${stepsHTML}
+                    </ul>
+                </div>
+
+                <div class="space-y-2">
+                    <p class="font-black text-slate-900 text-xs uppercase">👇 Pilih Tutur Kata & Tindakan Beradab:</p>
+                    ${choicesHTML}
+                </div>
+
+                <div id="tutorial-feedback" class="hidden p-3.5 rounded-2xl border-2 font-bold text-xs sm:text-sm space-y-2.5"></div>
+            `;
+
+            document.getElementById('tutorial-modal').classList.remove('hidden');
+        }
+
+        function closeTutorialModal() {
+            document.getElementById('tutorial-modal').classList.add('hidden');
+            isModalOpen = false;
+            activeStationIdx = null;
+        }
+
+        function selectTutorialChoice(choiceIdx) {
+            const st = STATIONS_DATA[activeStationIdx];
+            const choice = st.choices[choiceIdx];
+            const fb = document.getElementById('tutorial-feedback');
+            const btns = document.querySelectorAll('.tut-choice-btn');
+
+            fb.classList.remove('hidden');
+
+            if (choice.correct) {
+                playSfx('success');
+                btns[choiceIdx].classList.remove('bg-white', 'border-slate-300');
+                btns[choiceIdx].classList.add('bg-emerald-200', 'border-emerald-700');
+
+                fb.className = "p-3.5 rounded-2xl border-2 border-emerald-700 bg-emerald-100 text-emerald-950 font-bold text-xs sm:text-sm space-y-2.5";
+                fb.innerHTML = `
+                    <p class="font-black text-emerald-800">✅ PILIHAN TEPAT!</p>
+                    <p>${choice.feedback}</p>
+                    <button type="button" onclick="execute3DDemonstration()" class="game-btn bg-emerald-500 text-slate-950 w-full py-3 rounded-2xl font-black text-xs sm:text-sm shadow-lg">
+                        ${st.demoBtnLabel}
+                    </button>
+                `;
+            } else {
+                playSfx('wrong');
+                btns[choiceIdx].classList.remove('bg-white', 'border-slate-300');
+                btns[choiceIdx].classList.add('bg-rose-200', 'border-rose-600');
+
+                fb.className = "p-3.5 rounded-2xl border-2 border-rose-600 bg-rose-100 text-rose-950 font-bold text-xs sm:text-sm";
+                fb.innerHTML = `<p class="font-black text-rose-800">❌ Kurang Beradab!</p><p class="mt-0.5">${choice.feedback}</p>`;
+            }
+        }
+
+        // Menjalankan Animasi 3D Tangan Pemain di Hadapan Watak
+        function execute3DDemonstration() {
+            const idx = activeStationIdx;
+            const st = STATIONS_DATA[idx];
+            closeTutorialModal();
+
+            // Aktifkan animasi tangan FPV mengikut jenis adab
+            performHandAnimation(st.demoAnim);
+            playSfx('success');
+
+            // Reaksi watak 3D di hadapan pemain
+            const npcObj = npcEntities[idx];
+            if (npcObj) {
+                if (idx === 2) {
+                    // Adik Aiman berdiri semula setelah dibantu!
+                    npcObj.mainChar.position.y = 0;
+                    npcObj.mainChar.rotation.x = 0;
+                }
+                npcObj.ring.material.color.setHex(0x22c55e);
+            }
+
+            completedStations.add(idx);
+            updateProgressHUD();
+
+            // Papar mesej kejayaan pada bar kompas HUD
+            document.getElementById('hud-compass-text').textContent = `⭐ ${st.demoSuccessMsg}`;
+
+            if (completedStations.size >= STATIONS_DATA.length) {
+                setTimeout(() => {
+                    isModalOpen = true;
+                    document.getElementById('victory-modal').classList.remove('hidden');
+                }, 1400);
+            }
+        }
+
+        function performHandAnimation(actionType) {
+            currentHandAction = actionType;
+            handActionTimer = 1.6; // Tempoh animasi demonstrasi dalam saat
+        }
+
+        function updateProgressHUD() {
+            document.getElementById('hud-score').textContent = `${completedStations.size} / ${STATIONS_DATA.length}`;
+            STATIONS_DATA.forEach((st, idx) => {
+                const btn = document.getElementById(`tp-btn-${idx}`);
+                if (btn && completedStations.has(idx)) {
+                    btn.classList.remove('bg-amber-100', 'bg-sky-100', 'bg-emerald-100');
+                    btn.classList.add('bg-emerald-400');
+                    btn.textContent = `✅ ${st.npcName}`;
+                }
+            });
+        }
+
+        /* ============================================================================
+           6. TETAPAN (RESOLUTION, FULLSCREEN, SENSITIVITY)
+           ============================================================================ */
+        function openSettingsModal() {
+            playSfx('click');
+            isModalOpen = true;
+            document.getElementById('settings-modal').classList.remove('hidden');
+        }
+
+        function closeSettingsModal() {
+            playSfx('click');
+            document.getElementById('settings-modal').classList.add('hidden');
+            if (isGameRunning) isModalOpen = false;
+        }
+
+        function setResolution(level) {
+            if (renderer) {
+                const dpr = window.devicePixelRatio || 1;
+                if (level === 'low') renderer.setPixelRatio(Math.min(0.65, dpr));
+                else if (level === 'med') renderer.setPixelRatio(Math.min(1.0, dpr));
+                else renderer.setPixelRatio(Math.min(1.5, dpr));
+                renderer.setSize(window.innerWidth || 800, window.innerHeight || 600);
+            }
+
+            ['low', 'med', 'high'].forEach(r => {
+                const btn = document.getElementById('res-' + r);
+                if (btn) {
+                    btn.className = (r === level)
+                        ? "game-btn bg-emerald-400 text-slate-950 py-2 rounded-xl text-xs font-extrabold flex-col"
+                        : "game-btn bg-white text-slate-800 py-2 rounded-xl text-xs font-extrabold flex-col";
+                }
+            });
+            playSfx('click');
+        }
+
+        function changeSensitivity(val) {
+            const labels = { "1": "Perlahan", "2": "Sederhana", "3": "Pantas" };
+            const mults = { "1": 0.65, "2": 1.0, "3": 1.45 };
+            lookSensitivity = mults[val] || 1.0;
+            document.getElementById('sens-label').textContent = labels[val] || "Sederhana";
+        }
+
+        function toggleFullscreenMode() {
+            playSfx('click');
+            const docEl = document.documentElement;
+            const isFs = document.fullscreenElement || document.webkitFullscreenElement || document.body.classList.contains('pseudo-fullscreen');
+
+            if (!isFs) {
+                if (docEl.requestFullscreen) {
+                    docEl.requestFullscreen().catch(() => {
+                        document.body.classList.add('pseudo-fullscreen');
+                    });
+                } else if (docEl.webkitRequestFullscreen) {
+                    docEl.webkitRequestFullscreen();
+                } else {
+                    document.body.classList.add('pseudo-fullscreen');
+                }
+            } else {
+                document.body.classList.remove('pseudo-fullscreen');
+                if (document.exitFullscreen && document.fullscreenElement) {
+                    document.exitFullscreen().catch(() => {});
+                } else if (document.webkitExitFullscreen && document.webkitFullscreenElement) {
+                    document.webkitExitFullscreen();
+                }
+            }
+            setTimeout(handleResize, 120);
+        }
+
+        function closeVictoryModal() {
+            playSfx('click');
+            document.getElementById('victory-modal').classList.add('hidden');
+            isModalOpen = false;
+        }
+
+        function handleResize() {
+            if (!camera || !renderer) return;
+            const w = window.innerWidth || 800;
+            const h = window.innerHeight || 600;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+        }
+
+        /* ============================================================================
+           7. GELUNG ANIMASI 3D (PERGERAKAN 360°, ANIMASI TANGAN & KOMPAS)
+           ============================================================================ */
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.05);
+            const elapsed = clock.getElapsedTime();
+
+            // Animasi idle watak-watak di taman
+            npcEntities.forEach((npc, idx) => {
+                if (npc.mainChar && idx !== 2) {
+                    npc.mainChar.userData.head.rotation.y = Math.sin(elapsed * 1.5 + idx) * 0.25;
+                    npc.mainChar.userData.rightArm.rotation.z = Math.sin(elapsed * 2 + idx) * 0.12 - 0.1;
+                }
+            });
+
+            if (isGameRunning && !isModalOpen) {
+                updatePlayer360Movement(dt, elapsed);
+                checkProximityToStations();
+            }
+
+            updateFirstPersonHandsAnimation(dt, elapsed);
+
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
+
+        function updatePlayer360Movement(dt, elapsed) {
+            let forward = joyMove.forward;
+            let right = joyMove.right;
+
+            if (keyState['KeyW'] || keyState['ArrowUp']) forward += 1;
+            if (keyState['KeyS'] || keyState['ArrowDown']) forward -= 1;
+            if (keyState['KeyD'] || keyState['ArrowRight']) right += 1;
+            if (keyState['KeyA'] || keyState['ArrowLeft']) right -= 1;
+
+            // Putaran 360 darjah menggunakan butang ↺/↻ atau kekunci Q/E
+            if (turnBtnState.left || keyState['KeyQ']) {
+                player.yaw += player.turnSpeed * lookSensitivity * dt;
+            }
+            if (turnBtnState.right || keyState['KeyE']) {
+                player.yaw -= player.turnSpeed * lookSensitivity * dt;
+            }
+
+            const mag = Math.hypot(forward, right);
+            if (mag > 1) {
+                forward /= mag;
+                right /= mag;
+            }
+
+            const sinYaw = Math.sin(player.yaw);
+            const cosYaw = Math.cos(player.yaw);
+
+            const vx = (-sinYaw * forward + cosYaw * right) * player.speed;
+            const vz = (-cosYaw * forward - sinYaw * right) * player.speed;
+
+            player.pos.x = Math.max(-20, Math.min(20, player.pos.x + vx * dt));
+            player.pos.z = Math.max(-20, Math.min(20, player.pos.z + vz * dt));
+
+            // Ayunan langkah kaki lembut semasa berjalan
+            const isMoving = mag > 0.08;
+            const bobOffset = isMoving ? Math.sin(elapsed * 11) * 0.05 : 0;
+            player.pos.y = player.baseEyeHeight + bobOffset;
+
+            camera.position.copy(player.pos);
+            camera.rotation.y = player.yaw;
+            camera.rotation.x = player.pitch;
+        }
+
+        function updateFirstPersonHandsAnimation(dt, elapsed) {
+            if (!leftArmGroup || !rightArmGroup) return;
+
+            if (handActionTimer > 0) {
+                handActionTimer -= dt;
+                const progress = Math.sin((1 - handActionTimer / 1.6) * Math.PI);
+
+                if (currentHandAction === 'salam' || currentHandAction === 'help') {
+                    // Hulur tangan kanan ke hadapan untuk bersalam / menolong
+                    rightArmGroup.position.set(0.22 - progress * 0.12, -0.22 + progress * 0.08, -0.25 - progress * 0.25);
+                    rightArmGroup.rotation.x = progress * 0.35;
+                } else if (currentHandAction === 'bow') {
+                    // Tunduk hormat: tangan kanan ke bawah & kamera menunduk sedikit
+                    rightArmGroup.position.set(0.26, -0.32 - progress * 0.12, -0.35 - progress * 0.15);
+                    camera.rotation.x = player.pitch - progress * 0.22;
+                } else if (currentHandAction === 'receive' || currentHandAction === 'share') {
+                    // Hulur kedua-dua belah tangan ke hadapan
+                    leftArmGroup.position.set(-0.22 + progress * 0.08, -0.22 + progress * 0.06, -0.25 - progress * 0.24);
+                    rightArmGroup.position.set(0.22 - progress * 0.08, -0.22 + progress * 0.06, -0.25 - progress * 0.24);
+                } else if (currentHandAction === 'wave') {
+                    // Melambai mesra
+                    rightArmGroup.position.set(0.32, -0.1 + progress * 0.12, -0.3);
+                    rightArmGroup.rotation.z = Math.sin(elapsed * 16) * 0.35;
+                }
+
+                if (handActionTimer <= 0) {
+                    currentHandAction = 'idle';
+                }
+            } else {
+                // Posisi rehat semula jadi
+                leftArmGroup.position.set(-0.34, -0.26 + Math.sin(elapsed * 2.5) * 0.008, -0.25);
+                leftArmGroup.rotation.set(0, 0, 0);
+                rightArmGroup.position.set(0.34, -0.26 + Math.cos(elapsed * 2.5) * 0.008, -0.25);
+                rightArmGroup.rotation.set(0, 0, 0);
+            }
+        }
+
+        function checkProximityToStations() {
+            let foundIdx = null;
+            let minDist = Infinity;
+            let nextTargetIdx = null;
+            let nextTargetDist = Infinity;
+
+            STATIONS_DATA.forEach((st, idx) => {
+                const d = Math.hypot(player.pos.x - st.pos.x, player.pos.z - st.pos.z);
+                if (d < 4.2 && d < minDist) {
+                    minDist = d;
+                    foundIdx = idx;
+                }
+                if (!completedStations.has(idx) && d < nextTargetDist) {
+                    nextTargetDist = d;
+                    nextTargetIdx = idx;
+                }
+            });
+
+            nearestStationIdx = foundIdx;
+            const interactBtn = document.getElementById('btn-interact');
+            const interactLabel = document.getElementById('btn-interact-label');
+
+            if (foundIdx !== null) {
+                const st = STATIONS_DATA[foundIdx];
+                interactBtn.classList.remove('hidden');
+                interactLabel.textContent = `SANTUNI ${st.npcName.toUpperCase()}`;
+            } else {
+                interactBtn.classList.add('hidden');
+            }
+
+            // Kemas kini kompas arah 360° jika tidak sedang memaparkan mesej kejayaan
+            const compassEl = document.getElementById('hud-compass-text');
+            if (foundIdx !== null) {
+                compassEl.textContent = `Berhampiran ${STATIONS_DATA[foundIdx].npcName} — Tekan butang hijau untuk demonstrasi!`;
+            } else if (nextTargetIdx !== null) {
+                const target = STATIONS_DATA[nextTargetIdx];
+                const dx = target.pos.x - player.pos.x;
+                const dz = target.pos.z - player.pos.z;
+                const targetYaw = Math.atan2(-dx, -dz);
+                let diff = targetYaw - player.yaw;
+                while (diff > Math.PI) diff -= Math.PI * 2;
+                while (diff < -Math.PI) diff += Math.PI * 2;
+
+                let dirHint = "⬆️ Terus ke hadapan";
+                if (diff > 0.45) dirHint = "⬅️ Pusing ke Kiri (↺)";
+                else if (diff < -0.45) dirHint = "➡️ Pusing ke Kanan (↻)";
+
+                compassEl.textContent = `Seterusnya: ${target.npcName} (${Math.round(nextTargetDist)}m) • ${dirHint}`;
+            }
+        }
+
+        window.onload = function () {
+            initThreeWorld();
+            animate();
+        };
+    </script>
+</body>
+</html>
